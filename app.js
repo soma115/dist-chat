@@ -438,7 +438,7 @@ function vote(pollId, option) {
 function setupListeners() {
   $('#start-btn').addEventListener('click', () => {
     const name = $('#name-input').value.trim();
-    if (!name) return;
+    if (!name) { alert('Wpisz swoje imię lub nick'); return; }
     state.myName = name;
     state.myId = uuid();
     saveIdentity();
