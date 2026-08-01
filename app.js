@@ -40,13 +40,19 @@ function init() {
 }
 
 function showSetup() {
-  $('#setup').style.display = 'flex';
-  $('#app').style.display = 'none';
+  const setup = $('#setup');
+  const app = $('#app');
+  if (!setup || !app) { console.error('Brak elementu #setup lub #app'); return; }
+  setup.style.display = 'flex';
+  app.style.display = 'none';
 }
 
 function showApp() {
-  $('#setup').style.display = 'none';
-  $('#app').style.display = 'flex';
+  const setup = $('#setup');
+  const app = $('#app');
+  if (!setup || !app) { console.error('Brak elementu #setup lub #app'); return; }
+  setup.style.display = 'none';
+  app.style.display = 'flex';
   $('#my-meta').textContent = `${state.myName} · ${state.myId.substr(0, 8)}`;
   $('#my-uuid').textContent = state.myId;
 }
@@ -627,4 +633,8 @@ function renderPolls() {
   }
 }
 
-window.addEventListener('load', init);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
