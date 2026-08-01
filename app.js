@@ -130,6 +130,8 @@ function sendRaw(dc, obj) {
 }
 
 async function createOffer() {
+  $('sdp-area').classList.add('hidden');
+  $('sdp-out').value = '';
   const { pc, cid } = createPeer(true);
   state.sdpPending = { pc, cid, mode: 'offer' };
   const offer = await pc.createOffer();
@@ -144,6 +146,7 @@ async function createOffer() {
 
 async function acceptOffer() {
   const offer = JSON.parse($('sdp-in').value);
+  $('sdp-out').value = '';
   const { pc, cid } = createPeer(false);
   state.sdpPending = { pc, cid, mode: 'answer' };
   await pc.setRemoteDescription(offer);
@@ -197,6 +200,7 @@ function handleMessage(msg, dc) {
 function processMessage(msg) {
   if (msg.type === 'friend-request') {
     state.known[msg.from] = state.known[msg.from] || { name: '', friends: new Set() };
+    if (msg.name) state.known[msg.from].name = msg.name;
     state.known[msg.from].request = true;
     if (state.known[msg.from].sentRequest) acceptFriendUuid(msg.from);
     else render();
@@ -204,6 +208,7 @@ function processMessage(msg) {
     if (msg.to === state.myId) {
       state.friends.add(msg.from);
       state.known[msg.from] = state.known[msg.from] || { name: '', friends: new Set() };
+      if (msg.name) state.known[msg.from].name = msg.name;
       state.known[msg.from].friend = true;
       state.known[msg.from].request = false;
       state.known[msg.from].sentRequest = false;
@@ -263,7 +268,7 @@ function acceptFriendUuid(target) {
   state.known[target].request = false;
   state.known[target].sentRequest = false;
   saveState();
-  broadcast({ type: 'friend-accept', from: state.myId, to: target, mid: uuid() });
+  broadcast({ type: 'friend-accept', from: state.myId, name: state.myName, to: target, mid: uuid() });
   broadcast({ type: 'friend-list', from: state.myId, friends: [...state.friends], mid: uuid() });
   render();
 }
@@ -274,7 +279,7 @@ function addFriendByUuid() {
   if (!isUuid(target)) { alert('To nie wygląda na UUID'); return; }
   state.known[target] = state.known[target] || { name: '', friends: new Set() };
   state.known[target].sentRequest = true;
-  broadcast({ type: 'friend-request', from: state.myId, to: target, mid: uuid() });
+  broadcast({ type: 'friend-request', from: state.myId, name: state.myName, to: target, mid: uuid() });
   if (state.known[target].request) acceptFriendUuid(target);
   $('friend-uuid').value = '';
   saveState();
@@ -401,6 +406,7 @@ function bindActions() {
 
 function render() {
   renderPeers();
+  renderKnown();
   renderGroups();
   renderChat();
   renderPolls();
@@ -454,6 +460,53 @@ function renderPeers() {
       btn.style.marginBottom = '0';
       btn.onclick = () => addFriend(pid);
       li.appendChild(btn);
+    }
+    list.appendChild(li);
+  }
+}
+
+function renderKnown() {
+  const list = $('known-list');
+  const empty = $('known-empty');
+  list.innerHTML = '';
+  const entries = Object.entries(state.known).filter(
+    ([pid, info]) => !state.peers[pid] && (info.request || info.sentRequest || state.friends.has(pid))
+  );
+  if (!entries.length) { empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  for (const [pid, info] of entries) {
+    const li = document.createElement('li');
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'info';
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = info.name || 'Nieznany';
+    const id = document.createElement('div');
+    id.className = 'id';
+    id.textContent = pid.slice(0, 8);
+    infoDiv.appendChild(name);
+    infoDiv.appendChild(id);
+    li.appendChild(infoDiv);
+    if (state.friends.has(pid)) {
+      const badge = document.createElement('span');
+      badge.className = 'badge friend';
+      badge.textContent = 'Znajomy';
+      li.appendChild(badge);
+    } else if (info.request) {
+      const btn = document.createElement('button');
+      btn.className = 'btn success';
+      btn.textContent = 'Akceptuj';
+      btn.type = 'button';
+      btn.style.width = 'auto';
+      btn.style.padding = '8px 12px';
+      btn.style.marginBottom = '0';
+      btn.onclick = () => acceptFriendUuid(pid);
+      li.appendChild(btn);
+    } else if (info.sentRequest) {
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = 'Wysłano';
+      li.appendChild(badge);
     }
     list.appendChild(li);
   }
