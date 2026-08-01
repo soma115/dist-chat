@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang='pl'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <meta name='theme-color' content='#3b82f6'>
+  <link rel='apple-touch-icon' href='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27%3E%3Crect width=%27192%27 height=%27192%27 fill=%27%233b82f6%27/%3E%3Ctext x=%2796%27 y=%27120%27 font-size=%2780%27 text-anchor=%27middle%27 fill=%27white%27%3ED%3C/text%3E%3C/svg%3E'>
+  <link rel='manifest' href='./manifest.json'>
+  <link rel='stylesheet' href='./styles.css'>
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'></script>
+  <script src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'></script>
+  <title>Distributed Chat & Voting</title>
+</head>
+<body>
+  <div id='setup'>
+    <header>
+      <h1>Distributed Chat & Voting</h1>
+      <div class='meta'>Węzeł P2P w twojej kieszeni</div>
+    </header>
+    <main>
+      <div class='card'>
+        <h2>Ustaw swoją tożsamość</h2>
+        <input id='name-input' type='text' placeholder='Twoje imię / nick' maxlength='24'>
+        <button class='btn' id='start-btn'>Dołącz do sieci</button>
+      </div>
+    </main>
+  </div>
+
+  <div id='app'>
+    <header>
+      <h1>Distributed Chat & Voting</h1>
+      <div class='meta' id='my-meta'></div>
+    </header>
+    <main id='main-content'>
+      <div class='panel active' id='panel-peers'>
+        <div class='card'>
+          <h3>Dodaj węzeł</h3>
+          <p class='meta'>Twój UUID: <code id='my-uuid'></code> <button class='btn secondary' id='copy-uuid-btn' style='width:auto; padding:6px 10px; margin:0 0 0 8px;'>Kopiuj</button></p>
+          <button class='btn' id='create-offer-btn'>Stwórz zaproszenie</button>
+          <button class='btn secondary' id='accept-offer-btn'>Akceptuj zaproszenie</button>
+          <div id='sdp-area' class='hidden mt-12'>
+            <label for='sdp-out'>Wyślij ten kod do drugiej osoby:</label>
+            <textarea id='sdp-out' title='Kod SDP do przekazania' aria-label='Kod SDP do przekazania' readonly></textarea>
+            <label for='sdp-in'>Wklej kod od drugiej osoby:</label>
+            <textarea id='sdp-in' title='Wklej otrzymany kod SDP' aria-label='Wklej otrzymany kod SDP' placeholder='wklej SDP / answer'></textarea>
+            <button class='btn' id='show-qr-btn' type='button'>Pokaż jako QR</button>
+            <div id='qr-display' class='hidden'></div>
+            <button class='btn' id='scan-qr-btn' type='button'>Zeskanuj QR</button>
+            <button class='btn success' id='sdp-next-btn'>Dalej</button>
+          </div>
+        </div>
+        <div class='card'>
+          <h3>Dodaj znajomego po UUID</h3>
+          <input id='friend-uuid' type='text' placeholder='Wklej UUID znajomego'>
+          <button class='btn' id='add-friend-uuid-btn'>Wyślij prośbę o znajomość</button>
+          <p class='meta'>Możesz też zeskanować kod QR z UUID/SDP używając przycisku powyżej.</p>
+        </div>
+        <div class='card'>
+          <h3>Twoje połączenia</h3>
+          <ul class='list' id='peers-list'></ul>
+        </div>
+      </div>
+
+      <div class='panel' id='panel-groups'>
+        <div class='card'>
+          <h3>Twoja grupa</h3>
+          <p class='empty' id='groups-empty'>Nie masz jeszcze potwierdzonych znajomości.</p>
+          <ul class='list' id='groups-list'></ul>
+        </div>
+      </div>
+
+      <div class='panel' id='panel-chat'>
+        <div class='card'>
+          <h3>Czat grupowy</h3>
+          <div id='chat-messages' class='mb-12'></div>
+          <input id='chat-input' type='text' placeholder='Napisz wiadomość...'>
+          <button class='btn' id='chat-send-btn'>Wyślij</button>
+        </div>
+      </div>
+
+      <div class='panel' id='panel-polls'>
+        <div class='card'>
+          <h3>Nowe głosowanie</h3>
+          <input id='poll-question' type='text' placeholder='Pytanie'>
+          <textarea id='poll-options' placeholder='Opcje oddzielone przecinkami'></textarea>
+          <button class='btn' id='poll-create-btn'>Utwórz głosowanie</button>
+        </div>
+        <div class='card'>
+          <h3>Aktywne głosowania</h3>
+          <ul class='list' id='polls-list'></ul>
+        </div>
+      </div>
+    </main>
+
+    <nav class='tabs'>
+      <button class='active' data-tab='panel-peers'>Węzły</button>
+      <button data-tab='panel-groups'>Grupy</button>
+      <button data-tab='panel-chat'>Czat</button>
+      <button data-tab='panel-polls'>Głosowania</button>
+    </nav>
+  </div>
+
+  <div id='qr-overlay' class='hidden'>
+    <div class='qr-box'>
+      <video id='qr-video' autoplay playsinline></video>
+      <canvas id='qr-canvas' class='hidden'></canvas>
+      <p>Skieruj kamerę na kod QR...</p>
+      <button class='btn danger' id='qr-close-btn'>Zamknij skaner</button>
+    </div>
+  </div>
+
+  <script src='./app.js'></script>
+</body>
+</html>
