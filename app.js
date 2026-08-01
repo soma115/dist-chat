@@ -103,7 +103,11 @@ function createPeer(isOfferer) {
     dc = pc.createDataChannel('chat');
     setupChannel(dc, cid);
   }
-  pc.ondatachannel = (e) => setupChannel(e.channel, cid);
+  pc.ondatachannel = (e) => {
+    dc = e.channel;
+    if (state.peers[cid]) state.peers[cid].dc = dc;
+    setupChannel(dc, cid);
+  };
   pc.onconnectionstatechange = () => {
     if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
       cleanupPeer(pc._peerId || pc._cid);
