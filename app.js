@@ -33,129 +33,21 @@ function init() {
   } else {
     showSetup();
   }
-  setupTabs();
-  setupListeners();
+  bindTabs();
+  bindActions();
   render();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
 }
 
 function showSetup() {
-  const setup = $('#setup');
-  const app = $('#app');
-  if (!setup || !app) { console.error('Brak elementu #setup lub #app'); return; }
-  setup.style.display = 'flex';
-  app.style.display = 'none';
+  $('setup').classList.remove('hidden');
+  $('app').classList.add('hidden');
 }
 
 function showApp() {
-  const setup = $('#setup');
-  const app = $('#app');
-  if (!setup || !app) { console.error('Brak elementu #setup lub #app'); return; }
-  setup.style.display = 'none';
-  app.style.display = 'flex';
-  $('#my-meta').textContent = `${state.myName} · ${state.myId.substr(0, 8)}`;
-  $('#my-uuid').textContent = state.myId;
-}
-
-function copyUuid() {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(state.myId).then(() => alert('UUID skopiowany do schowka'));
-  } else {
-    const el = $('friend-uuid');
-    el.value = state.myId;
-    el.select();
-    alert('Zaznaczono UUID; skopiuj ręcznie');
-  }
-}
-
-function isUuid(str) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-}
-
-function acceptFriendUuid(target) {
-  state.friends.add(target);
-  state.known[target] = state.known[target] || { name: '', friends: new Set() };
-  state.known[target].friend = true;
-  state.known[target].request = false;
-  state.known[target].sentRequest = false;
-  saveState();
-  broadcast({ type: 'friend-accept', from: state.myId, to: target, mid: uuid() }, state.myId);
-  broadcast({ type: 'friend-list', from: state.myId, friends: [...state.friends], mid: uuid() });
-  render();
-}
-
-function addFriendByUuid() {
-  const target = $('friend-uuid').value.trim();
-  if (!target) return;
-  if (!isUuid(target)) { alert('Podany tekst nie wygląda na UUID'); return; }
-  state.known[target] = state.known[target] || { name: '', friends: new Set() };
-  state.known[target].sentRequest = true;
-  broadcast({ type: 'friend-request', from: state.myId, to: target, mid: uuid() }, state.myId);
-  if (state.known[target].request) acceptFriendUuid(target);
-  $('friend-uuid').value = '';
-  saveState();
-  render();
-}
-
-function showQr() {
-  const display = $('qr-display');
-  const text = $('sdp-out').value.trim();
-  if (!text) return;
-  display.innerHTML = '';
-  display.classList.remove('hidden');
-  try {
-    new QRCode(display, { text, width: 240, height: 240, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
-  } catch (e) { console.error(e); }
-}
-
-let qrStream = null;
-let qrScanning = false;
-
-async function startQrScan() {
-  $('qr-overlay').classList.remove('hidden');
-  qrScanning = true;
-  try {
-    qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const video = $('qr-video');
-    video.srcObject = qrStream;
-    await video.play();
-    scanLoop();
-  } catch (e) {
-    alert('Nie udało się uruchomić kamery: ' + e.message);
-    stopQrScan();
-  }
-}
-
-function stopQrScan() {
-  qrScanning = false;
-  if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
-  $('qr-overlay').classList.add('hidden');
-}
-
-function scanLoop() {
-  if (!qrScanning) return;
-  const video = $('qr-video');
-  const canvas = $('qr-canvas');
-  if (!video.videoWidth || !video.videoHeight) { requestAnimationFrame(scanLoop); return; }
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const code = jsQR(img.data, canvas.width, canvas.height);
-  if (code && code.data) { onQrFound(code.data); }
-  else { requestAnimationFrame(scanLoop); }
-}
-
-function onQrFound(data) {
-  if (isUuid(data)) {
-    $('friend-uuid').value = data;
-    alert('Wykryto UUID. Kliknij "Wyślij prośbę o znajomość", aby potwierdzić.');
-  } else {
-    $('sdp-in').value = data;
-    alert('Wykryto kod SDP. Wklejono w odpowiednie pole.');
-  }
-  stopQrScan();
+  $('setup').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  $('my-meta').textContent = `${state.myName} (${state.myId.slice(0, 8)}...)`;
+  $('my-uuid').textContent = state.myId;
 }
 
 function saveIdentity() {
@@ -165,16 +57,15 @@ function saveIdentity() {
 function saveState() {
   const known = {};
   for (const [k, v] of Object.entries(state.known)) {
-    known[k] = { name: v.name, friends: [...v.friends], direct: v.direct };
+    known[k] = { name: v.name, friends: [...v.friends] };
   }
-  const payload = {
+  localStorage.setItem('dist-chat-state', JSON.stringify({
     friends: [...state.friends],
     known,
     messages: state.messages,
     polls: state.polls,
     seen: [...state.seen]
-  };
-  localStorage.setItem('dist-chat-state', JSON.stringify(payload));
+  }));
 }
 
 function loadState() {
@@ -184,25 +75,22 @@ function loadState() {
   state.friends = new Set(data.friends || []);
   state.known = {};
   for (const [k, v] of Object.entries(data.known || {})) {
-    state.known[k] = { name: v.name, friends: new Set(v.friends || []), direct: v.direct };
+    state.known[k] = { name: v.name, friends: new Set(v.friends || []) };
   }
   state.messages = data.messages || [];
   state.polls = data.polls || {};
   state.seen = new Set(data.seen || []);
-  data.messages.forEach(m => { if (m.mid) state.seen.add(m.mid); });
-  Object.values(data.polls || {}).forEach(p => { if (p.mid) state.seen.add(p.mid); });
 }
 
 function waitIce(pc) {
   return new Promise((resolve) => {
     if (pc.iceGatheringState === 'complete') { resolve(); return; }
-    const check = () => {
+    pc.addEventListener('icegatheringstatechange', function check() {
       if (pc.iceGatheringState === 'complete') {
         pc.removeEventListener('icegatheringstatechange', check);
         resolve();
       }
-    };
-    pc.addEventListener('icegatheringstatechange', check);
+    });
   });
 }
 
@@ -212,33 +100,25 @@ function createPeer(isOfferer) {
   pc._cid = cid;
   let dc = null;
   if (isOfferer) {
-    dc = pc.createDataChannel('chat', { ordered: true });
-    dc._pc = pc;
+    dc = pc.createDataChannel('chat');
     setupChannel(dc, cid);
   }
-  pc.ondatachannel = (e) => {
-    const ch = e.channel;
-    ch._pc = e.target;
-    setupChannel(ch, cid);
-  };
+  pc.ondatachannel = (e) => setupChannel(e.channel, cid);
   pc.onconnectionstatechange = () => {
     if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
       cleanupPeer(pc._peerId || pc._cid);
     }
   };
-  state.peers[cid] = { pc, dc, name: 'łączenie...', isFriend: false };
+  state.peers[cid] = { pc, dc, name: 'łączenie...' };
   return { pc, dc, cid };
 }
 
 function setupChannel(dc, cid) {
   dc._cid = cid;
-  dc.onopen = () => {
-    sendRaw(dc, { type: 'hello', id: state.myId, name: state.myName, friends: [...state.friends] });
-  };
+  dc.onopen = () => sendRaw(dc, { type: 'hello', id: state.myId, name: state.myName, friends: [...state.friends] });
   dc.onmessage = (e) => {
     try { handleMessage(JSON.parse(e.data), e.target); } catch (err) { console.error(err); }
   };
-  dc.onclose = () => { if (dc._pc) cleanupPeer(dc._pc._peerId || dc._pc._cid); };
 }
 
 function sendRaw(dc, obj) {
@@ -246,44 +126,41 @@ function sendRaw(dc, obj) {
 }
 
 async function createOffer() {
-  const { pc, dc, cid } = createPeer(true);
-  state.sdpPending = { pc, dc, cid, mode: 'offer' };
+  const { pc, cid } = createPeer(true);
+  state.sdpPending = { pc, cid, mode: 'offer' };
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   await waitIce(pc);
-  $('qr-display').innerHTML = '';
-  $('qr-display').classList.add('hidden');
-  $('#sdp-out').value = JSON.stringify(pc.localDescription);
-  $('#sdp-in').value = '';
-  $('#sdp-in').placeholder = 'Wklej SDP-answer od drugiej osoby';
-  $('#sdp-next-btn').textContent = 'Sfinalizuj połączenie';
-  $('#sdp-area').classList.remove('hidden');
+  $('sdp-out').value = JSON.stringify(pc.localDescription);
+  $('sdp-in').value = '';
+  $('sdp-in').placeholder = 'Wklej SDP-answer';
+  $('sdp-next-btn').textContent = 'Sfinalizuj';
+  $('sdp-area').classList.remove('hidden');
 }
 
 async function acceptOffer() {
-  const offer = JSON.parse($('#sdp-in').value);
+  const offer = JSON.parse($('sdp-in').value);
   const { pc, cid } = createPeer(false);
   state.sdpPending = { pc, cid, mode: 'answer' };
   await pc.setRemoteDescription(offer);
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   await waitIce(pc);
-  $('#sdp-out').value = JSON.stringify(pc.localDescription);
-  $('#sdp-next-btn').textContent = 'Zamknij';
+  $('sdp-out').value = JSON.stringify(pc.localDescription);
+  $('sdp-next-btn').textContent = 'Zamknij';
 }
 
-async function acceptAnswer() {
-  const answer = JSON.parse($('#sdp-in').value);
+async function finalizeAnswer() {
+  const answer = JSON.parse($('sdp-in').value);
   if (!state.sdpPending || !state.sdpPending.pc) return;
   await state.sdpPending.pc.setRemoteDescription(answer);
-  $('#sdp-area').classList.add('hidden');
+  $('sdp-area').classList.add('hidden');
   state.sdpPending = null;
 }
 
 function cleanupPeer(key) {
   const p = state.peers[key];
   if (p) { try { p.pc.close(); } catch (e) {} delete state.peers[key]; }
-  if (state.known[key]) state.known[key].direct = false;
   render();
 }
 
@@ -293,12 +170,11 @@ function handleMessage(msg, dc) {
     const p = state.peers[cid];
     if (!p) return;
     p.name = msg.name;
-    p.isFriend = state.friends.has(msg.id);
-    dc._peerId = msg.id;
     p.pc._peerId = msg.id;
+    dc._peerId = msg.id;
     delete state.peers[cid];
     state.peers[msg.id] = p;
-    state.known[msg.id] = { name: msg.name, friends: new Set(msg.friends || []), direct: true };
+    state.known[msg.id] = { name: msg.name, friends: new Set(msg.friends || []) };
     render();
     return;
   }
@@ -307,22 +183,19 @@ function handleMessage(msg, dc) {
   if (msg.mid && state.seen.has(msg.mid)) return;
   if (msg.mid) state.seen.add(msg.mid);
   if (msg.to && msg.to !== state.myId) {
-    forward(msg, from);
+    relay(msg, from);
     return;
   }
   processMessage(msg);
-  if (['chat', 'poll', 'vote', 'friend-list'].includes(msg.type)) forward(msg, from);
+  if (['chat', 'poll', 'vote', 'friend-list'].includes(msg.type)) relay(msg, from);
 }
 
 function processMessage(msg) {
   if (msg.type === 'friend-request') {
     state.known[msg.from] = state.known[msg.from] || { name: '', friends: new Set() };
     state.known[msg.from].request = true;
-    if (state.known[msg.from].sentRequest) {
-      acceptFriendUuid(msg.from);
-    } else {
-      render();
-    }
+    if (state.known[msg.from].sentRequest) acceptFriendUuid(msg.from);
+    else render();
   } else if (msg.type === 'friend-accept') {
     if (msg.to === state.myId) {
       state.friends.add(msg.from);
@@ -339,7 +212,7 @@ function processMessage(msg) {
     state.known[msg.from].friends = new Set(msg.friends);
     render();
   } else if (msg.type === 'chat') {
-    state.messages.push({ mid: msg.mid, groupId: msg.groupId, sender: msg.sender, text: msg.text, time: msg.time });
+    state.messages.push({ mid: msg.mid, sender: msg.sender, text: msg.text, time: msg.time });
     saveState();
     render();
   } else if (msg.type === 'poll') {
@@ -355,7 +228,7 @@ function processMessage(msg) {
   }
 }
 
-function forward(msg, from) {
+function relay(msg, from) {
   for (const [pid, p] of Object.entries(state.peers)) {
     if (pid === from) continue;
     if (p.dc && p.dc.readyState === 'open') sendRaw(p.dc, msg);
@@ -373,6 +246,35 @@ function broadcast(msg, exclude) {
 function sendTo(peerId, msg) {
   const p = state.peers[peerId];
   if (p && p.dc && p.dc.readyState === 'open') sendRaw(p.dc, { ...msg, mid: msg.mid || uuid() });
+}
+
+function isUuid(str) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
+function acceptFriendUuid(target) {
+  state.friends.add(target);
+  state.known[target] = state.known[target] || { name: '', friends: new Set() };
+  state.known[target].friend = true;
+  state.known[target].request = false;
+  state.known[target].sentRequest = false;
+  saveState();
+  broadcast({ type: 'friend-accept', from: state.myId, to: target, mid: uuid() });
+  broadcast({ type: 'friend-list', from: state.myId, friends: [...state.friends], mid: uuid() });
+  render();
+}
+
+function addFriendByUuid() {
+  const target = $('friend-uuid').value.trim();
+  if (!target) return;
+  if (!isUuid(target)) { alert('To nie wygląda na UUID'); return; }
+  state.known[target] = state.known[target] || { name: '', friends: new Set() };
+  state.known[target].sentRequest = true;
+  broadcast({ type: 'friend-request', from: state.myId, to: target, mid: uuid() });
+  if (state.known[target].request) acceptFriendUuid(target);
+  $('friend-uuid').value = '';
+  saveState();
+  render();
 }
 
 function addFriend(peerId) {
@@ -410,20 +312,20 @@ function computeGroup() {
 }
 
 function sendChat() {
-  const text = $('#chat-input').value.trim();
+  const text = $('chat-input').value.trim();
   if (!text) return;
-  const msg = { type: 'chat', mid: uuid(), sender: state.myId, groupId: 'main', text, time: Date.now() };
-  state.messages.push({ mid: msg.mid, groupId: 'main', sender: state.myId, text, time: msg.time });
-  $('#chat-input').value = '';
+  const msg = { type: 'chat', mid: uuid(), sender: state.myId, text, time: Date.now() };
+  state.messages.push({ mid: msg.mid, sender: state.myId, text, time: msg.time });
+  $('chat-input').value = '';
   saveState();
   broadcast(msg);
   renderChat();
 }
 
 function createPoll() {
-  const question = $('#poll-question').value.trim();
-  const options = $('#poll-options').value.split(',').map(s => s.trim()).filter(Boolean);
-  if (!question || options.length < 2) return;
+  const question = $('poll-question').value.trim();
+  const options = $('poll-options').value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!question || options.length < 2) { alert('Podaj pytanie i co najmniej 2 opcje'); return; }
   const pollId = uuid();
   const msg = { type: 'poll', mid: uuid(), pollId, question, options, creator: state.myId };
   state.polls[pollId] = { question, options, votes: {}, creator: state.myId };
@@ -441,10 +343,21 @@ function vote(pollId, option) {
   renderPolls();
 }
 
-function setupListeners() {
-  $('#start-btn').addEventListener('click', () => {
-    const name = $('#name-input').value.trim();
-    if (!name) { alert('Wpisz swoje imię lub nick'); return; }
+function bindTabs() {
+  document.querySelectorAll('.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+      btn.classList.add('active');
+      $(btn.dataset.view).classList.remove('hidden');
+    });
+  });
+}
+
+function bindActions() {
+  $('start-btn').addEventListener('click', () => {
+    const name = $('name-input').value.trim();
+    if (!name) { alert('Wpisz swoje imię'); return; }
     state.myName = name;
     state.myId = uuid();
     saveIdentity();
@@ -452,50 +365,34 @@ function setupListeners() {
     render();
   });
 
-  $('#copy-uuid-btn').addEventListener('click', copyUuid);
-  $('#add-friend-uuid-btn').addEventListener('click', addFriendByUuid);
-  $('#show-qr-btn').addEventListener('click', showQr);
-  $('#scan-qr-btn').addEventListener('click', startQrScan);
-  $('#qr-close-btn').addEventListener('click', stopQrScan);
+  $('copy-uuid-btn').addEventListener('click', () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(state.myId);
+  });
 
-  $('#create-offer-btn').addEventListener('click', () => createOffer());
-
-  $('#accept-offer-btn').addEventListener('click', () => {
-    $('#sdp-area').classList.remove('hidden');
-    $('qr-display').innerHTML = '';
-    $('qr-display').classList.add('hidden');
-    $('#sdp-out').value = '';
-    $('#sdp-in').value = '';
-    $('#sdp-in').placeholder = 'Wklej SDP-offer od drugiej osoby';
-    $('#sdp-next-btn').textContent = 'Utwórz odpowiedź';
+  $('create-offer-btn').addEventListener('click', createOffer);
+  $('accept-offer-btn').addEventListener('click', () => {
+    $('sdp-area').classList.remove('hidden');
+    $('sdp-out').value = '';
+    $('sdp-in').value = '';
+    $('sdp-in').placeholder = 'Wklej SDP-offer';
+    $('sdp-next-btn').textContent = 'Utwórz odpowiedź';
     state.sdpPending = { mode: 'answer' };
   });
 
-  $('#sdp-next-btn').addEventListener('click', () => {
+  $('sdp-next-btn').addEventListener('click', () => {
     if (!state.sdpPending) return;
-    if (state.sdpPending.mode === 'offer') acceptAnswer();
-    else if (state.sdpPending.mode === 'answer' && !state.sdpPending.pc) {
-      acceptOffer();
-    } else if (state.sdpPending.mode === 'answer') {
-      $('#sdp-area').classList.add('hidden');
+    if (state.sdpPending.mode === 'offer') finalizeAnswer();
+    else if (state.sdpPending.mode === 'answer' && !state.sdpPending.pc) acceptOffer();
+    else if (state.sdpPending.mode === 'answer') {
+      $('sdp-area').classList.add('hidden');
       state.sdpPending = null;
     }
   });
 
-  $('#chat-send-btn').addEventListener('click', sendChat);
-  $('#chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
-  $('#poll-create-btn').addEventListener('click', createPoll);
-}
-
-function setupTabs() {
-  document.querySelectorAll('.tabs button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      $(btn.dataset.tab).classList.add('active');
-    });
-  });
+  $('add-friend-uuid-btn').addEventListener('click', addFriendByUuid);
+  $('chat-send-btn').addEventListener('click', sendChat);
+  $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+  $('poll-create-btn').addEventListener('click', createPoll);
 }
 
 function render() {
@@ -506,9 +403,10 @@ function render() {
 }
 
 function renderPeers() {
-  const list = $('#peers-list');
+  const list = $('peers-list');
   list.innerHTML = '';
   for (const [pid, p] of Object.entries(state.peers)) {
+    if (pid.startsWith('pending-')) continue;
     const li = document.createElement('li');
     const info = document.createElement('div');
     info.className = 'info';
@@ -517,7 +415,7 @@ function renderPeers() {
     name.textContent = p.name || 'Nieznany';
     const id = document.createElement('div');
     id.className = 'id';
-    id.textContent = pid.substr(0, 8);
+    id.textContent = pid.slice(0, 8);
     info.appendChild(name);
     info.appendChild(id);
     li.appendChild(info);
@@ -531,6 +429,7 @@ function renderPeers() {
       const btn = document.createElement('button');
       btn.className = 'btn success';
       btn.textContent = 'Akceptuj';
+      btn.type = 'button';
       btn.style.width = 'auto';
       btn.style.padding = '8px 12px';
       btn.style.marginBottom = '0';
@@ -538,23 +437,19 @@ function renderPeers() {
       li.appendChild(btn);
     } else if (known.sentRequest) {
       const badge = document.createElement('span');
-      badge.className = 'badge pending';
+      badge.className = 'badge';
       badge.textContent = 'Wysłano';
       li.appendChild(badge);
-    } else if (!pid.startsWith('pending-')) {
+    } else {
       const btn = document.createElement('button');
       btn.className = 'btn secondary';
       btn.textContent = 'Dodaj';
+      btn.type = 'button';
       btn.style.width = 'auto';
       btn.style.padding = '8px 12px';
       btn.style.marginBottom = '0';
       btn.onclick = () => addFriend(pid);
       li.appendChild(btn);
-    } else {
-      const badge = document.createElement('span');
-      badge.className = 'badge';
-      badge.textContent = 'łączenie';
-      li.appendChild(badge);
     }
     list.appendChild(li);
   }
@@ -562,25 +457,23 @@ function renderPeers() {
 
 function renderGroups() {
   const group = computeGroup();
-  const empty = $('#groups-empty');
-  const list = $('#groups-list');
+  const empty = $('groups-empty');
+  const list = $('groups-list');
   list.innerHTML = '';
   if (group.length <= 1) {
-    empty.style.display = 'block';
+    empty.classList.remove('hidden');
   } else {
-    empty.style.display = 'none';
+    empty.classList.add('hidden');
     group.forEach(id => {
       const li = document.createElement('li');
-      const isMe = id === state.myId;
-      const name = isMe ? `${state.myName} (Ty)` : (state.known[id]?.name || 'Nieznany');
-      li.textContent = name;
+      li.textContent = id === state.myId ? `${state.myName} (Ty)` : (state.known[id]?.name || 'Nieznany');
       list.appendChild(li);
     });
   }
 }
 
 function renderChat() {
-  const box = $('#chat-messages');
+  const box = $('chat-messages');
   box.innerHTML = '';
   state.messages.forEach(m => {
     const div = document.createElement('div');
@@ -603,38 +496,36 @@ function renderChat() {
 }
 
 function renderPolls() {
-  const list = $('#polls-list');
+  const list = $('polls-list');
   list.innerHTML = '';
   for (const [pollId, poll] of Object.entries(state.polls)) {
-    const li = document.createElement('li');
-    li.style.flexDirection = 'column';
-    li.style.alignItems = 'flex-start';
+    const div = document.createElement('div');
+    div.className = 'poll';
     const title = document.createElement('div');
-    title.style.fontWeight = 'bold';
-    title.style.marginBottom = '6px';
+    title.className = 'question';
     title.textContent = poll.question;
-    li.appendChild(title);
+    div.appendChild(title);
     const counts = {};
     Object.values(poll.votes).forEach(o => { counts[o] = (counts[o] || 0) + 1; });
     poll.options.forEach(opt => {
       const row = document.createElement('div');
-      row.style.width = '100%';
-      row.style.marginTop = '4px';
+      row.className = 'option-row';
       const btn = document.createElement('button');
       btn.className = 'btn secondary';
+      btn.type = 'button';
       btn.textContent = `${opt} (${counts[opt] || 0})`;
-      if (poll.votes[state.myId]) btn.disabled = true;
-      if (poll.votes[state.myId] === opt) { btn.style.background = 'var(--success)'; btn.disabled = false; }
+      btn.disabled = !!poll.votes[state.myId];
+      if (poll.votes[state.myId] === opt) { btn.classList.add('success'); btn.disabled = false; }
       btn.onclick = () => vote(pollId, opt);
       row.appendChild(btn);
-      li.appendChild(row);
+      div.appendChild(row);
     });
-    list.appendChild(li);
+    list.appendChild(div);
   }
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
+document.addEventListener('DOMContentLoaded', init);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
 }
